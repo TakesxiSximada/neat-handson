@@ -1,0 +1,612 @@
+#+TITLE: 台本
+
+* オープニング
+
+** イベント紹介
+
+「進化するAIを実装してみよう―neat-pythonハンズオン」のお時間になりました。
+
+今回のイベントでは、簡単なゲームを作成しながらNEATというアルゴリズムについての理解を深めようと思います。
+
+進行役を務めます嶋田です。宜くお願いします。
+
+** イベントの説明
+
+私の画面を皆さんに共有し、少しずつ実装を進めようと思います。
+その様子を参考にして、ぜひ皆さんの環境でも実装してみてください。
+オンラインとしてZoomでご参加いただいている方、YouTube Liveにてご参加いただいている方がいらっしゃいます。
+
+配信の中で、間違いに対するご指摘、こうした方がもっと良い、こんな風にできた、または出来なかった事など、気付いた事をコメントして頂ければと思います。時間がれば投稿されたコメントにも回答していきたいと思います。
+
+またこちらの会場には、今回のために応援に駆け付けてくださった方が数名いらっしゃいます。
+
+[[./members.org]]
+
+一緒にハンズオンの様子を確認したり、実施したりしていただける事になりました。ぜひ、ご意見など途中でお伺いできればと思います。
+
+* 環境構築
+
+今回はcursesを使用できるPython3.10を使います。また絵文字も使用します。macOSであればPythonの公式サイトからPython3.10をインストールすればよいでしょう。このインストールの方法の説明は今回は行いません。
+
+Dockerでも実行できますが実行環境によっては、絵文字の表示が正しくできない場合があります。
+
+私の画面は、macOS VenturaにインストールしたPython3.10を使います。
+
+** Dockerで環境を作成したい場合
+
+Dockerで環境を構築する場合は、 =docker build= コマンドでDockerイメージをビルドします。この =Dockerfile= では =Ubuntu= をベースにしています。
+
+#+begin_src
+docker build -t neat-handson .
+#+end_src
+
+ビルドに成功したら、そのイメージを使用してコンテナを起動します。ここでは =Dockerfile= のある作業ディレクトリを =/app= にmountする形で起動します。
+
+#+caption: run
+#+begin_src
+docker run -it --volume ${PWD}:/app neat-handson bash
+#+end_src
+
+マウントにはDocker側の設定が必要な場合があります。またDockerfileにはneat-pythonのソースコードを梱包するようにしています。
+
+** Vagrantで環境を作成したい場合
+
+VirtualBox上でUbuntuを実行するためのVagrantファイルを準備しました。VirtualBoxやVagrantを準備すれば、この仮想マシンを使う事もできます。
+
+#+caption: Vagrantfile
+#+begin_src
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/jammy64"
+
+  config.vm.provider :virtualbox do |vb|
+    vb.gui = true
+  end
+
+  config.vm.provision :shell do |shell|
+    shell.privileged = true
+    shell.path = "provision.sh"
+    shell.reboot = true
+  end
+end
+#+end_src
+
+Vagrantのプロビジョンフェーズで関連するパッケージをインストールする為の以下のスクリプトを実行します。
+
+#+caption: provision.sh
+#+begin_src
+sudo apt update -y
+
+sudo apt install -y  \
+     fontconfig       \
+     gnome-session     \
+     gnome-terminal     \
+     python3.10-venv     \
+     language-pack-ja     \
+     fonts-noto-cjk-extra  \
+     fonts-noto-color-emoji
+
+sudo localectl set-locale LANG=ja_JP.UTF-8 LANGUAGE=ja_JP:
+#+end_src
+
+これら =Vagrantfile= と =provision.sh= のファイルを作成し =vagrant up= する事で環境を作成できます。
+
+#+begin_src bash
+vagrant up
+#+end_src
+
+仮想マシンへは =vagrant ssh= コマンドでログインもできますが、おそらく画面上に仮想マシンの画面が表示されていると思います。ユーザー名とパスワードは通常vagrant/vagrantです。
+
+** venv
+
+venvは使用するPythonの環境のsite-packagesディレクトリに直接パッケージをインストールしたくない場合に使用してください。
+
+私はパッケージの管理を分離したいので使用する事にします。
+
+#+caption: venvの作成
+#+begin_src
+python3.10 -m venv testing
+#+end_src
+
+venvを作成したら、それを有効にしておきます。
+
+#+caption: venvの有効化
+#+begin_src
+source testing/bin/activate
+#+end_src
+
+* cursesでゲームを作る
+
+cursesで表示を扱う方法をおさらいします。
+
+** Hello World!
+
+まず、cursesでhello worldを表示します。
+
+#+caption: Hello world!
+#+begin_src python
+import curses
+
+stdscr = curses.initscr()                # 画面を初期化する
+stdscr.addch(0, 0, "😃")                 # 1文字表示する
+stdscr.addstr(0, 2, " < Hello, world!")  # 文字列を表示する
+stdscr.refresh()                         # 画面の変更を反映する
+stdscr.getch()                           # 入力を待ち受ける
+curses.endwin()                          # cursesを終了する
+#+end_src
+
+今回は、基本的には画面の描画関連についてはこの機能だけで実装します。
+
+環境によってはcursesがインポートできない事もあります。その場合はVagrantやDockerで異なる環境を作成する事を試してみてください。
+
+環境にインストールされるフォントによっては、絵文字が表示できない事もあるかもしれません。その場合、絵文字は諦めてASCII文字を使うと良いかもしれません。絵文字を使っているのは、雰囲気のためだけです。
+
+** まっすぐ進む
+
+cursesの表示を確認できたら、今度はキャラクターを動かしてみます。キャラクターを動かすには、キャラクターを表示し、それを消し、少しずらして表示するといった処理を繰り返せば、動いているよに見えます。
+
+#+caption:
+#+begin_src python
+import time
+import curses
+import itertools
+
+
+stdscr = curses.initscr()
+
+goal = [1, 80]
+stdscr.addch(goal[0], goal[1], "🍪")
+
+current = [1, 0]
+stdscr.addch(current[0], current[1], "😃")
+
+i = 0
+stdscr.addstr(0, 0, f"age: {i:>4}")
+stdscr.refresh()
+stdscr.getch()
+
+for i in itertools.count(start=1):
+    stdscr.addstr(0, 0, f"age: {i:>4}")
+    stdscr.addch(current[0], current[1], " ")
+    current[1] = i
+    if current == goal:
+        stdscr.addch(current[0], current[1], "😍")
+        stdscr.refresh()
+        break
+
+    stdscr.addch(current[0], current[1], "😃")
+    stdscr.refresh()
+    time.sleep(0.1)
+
+stdscr.getch()
+curses.endwin()
+#+end_src
+
+** クッキーを探し回る
+
+クッキーを探す処理をランダムに探し周るようにしてみます。
+
+#+caption: run-random.py
+#+begin_src
+import random
+import time
+import curses
+import itertools
+
+
+stdscr = curses.initscr()
+
+goal = [12, 20]
+stdscr.addch(goal[0], goal[1], "🍪")
+
+current = [10, 10]
+stdscr.addch(current[0], current[1], "😃")
+
+i = 0
+stdscr.addstr(0, 0, f"age: {i:>4}")
+stdscr.refresh()
+stdscr.getch()
+
+for i in itertools.count(start=1):
+    stdscr.addstr(0, 0, f"age: {i:>4}")
+    stdscr.addch(current[0], current[1], " ")
+
+    axis = random.choice([0, 1])
+    move = random.choice([-1, 1])
+
+    # 画面外への移動を制限
+    if current[axis] + move >= 1:
+        current[axis] += move
+
+    if current == goal:
+        stdscr.addch(current[0], current[1], "😍")
+        stdscr.refresh()
+        break
+
+    stdscr.addch(current[0], current[1], "😃")
+    stdscr.refresh()
+    time.sleep(0.1)
+
+stdscr.getch()
+curses.endwin()
+#+end_src
+
+* neat-pythonを使う
+
+ここからはNEATアルゴリズムを使うために、neat-pythonと組み合わせていきます。
+
+** NEATのざっくりとした説明
+
+機械学習の手法には様々なものがありますが、その中でニューラルネットワークを用いた手法があります。
+
+＃+caption: 『Pythonではじめるオープンエンドな進化的アルゴリズム』より
+#+begin_quote
+NEATアルゴリズムは、遺伝的アルゴリズムを使って、ニューラルネットワークの構造と重みを進化させます。これにより、人間の手を加えずに効果的なニューラルネットワークを自動的に生成することができます。
+#+end_quote
+
+遺伝的アルゴリズムによって、ニューラルネットワークを変化させる事で、より良いネットワークの構造を見付け出すという手法です。
+
+** インストール
+
+PyPIにデプロイされている =neat-python= はかなり古いため、今回はGitHubから直接ソースコードをインストールします。
+
+#+caption: neat-pythonのソースコードを取得する。
+#+begin_src
+git clone https://github.com/CodeReclaimers/neat-python.git
+#+end_src
+
+#+caption: neat-pythonをインストールする
+#+begin_src
+cd neat-python
+pip install -e .
+#+end_src
+
+なお今回は最新のneat-python(37bc8bb73fd6153a115001c2646f9f02bac3ad81)を前提とします。
+
+ここで注意して欲しいのは、オンライン付録で使っているneat-pythonとは異なる点があります。書籍のサンプルプログラムではEvolution Gymという進化的アルゴリズムを実験するためのツールを使用しています。その中でneat-pythonも使われているのですが、そのneat-pythonは独自の拡張が施されています。例えば評価関数のための仮引数を追加したりしていました。そのためI/Fが異なっていて、その辻褄を合わせる必要があります。
+
+- https://neat-python.readthedocs.io/en/latest/
+- https://github.com/CodeReclaimers/neat-python
+- https://pypi.org/project/neat-python/
+
+** 設定ファイルを作る
+
+neat-pythonを使うには設定ファイルが必ず必要です。これによって内部の動きを調整するためのパラメータ等を細かく設定できます。
+
+ここでは、何も考えず盲目的に設定ファイルを作成する事にします。
+
+#+caption: simple.conf
+#+begin_src
+[NEAT]
+fitness_criterion     = max
+fitness_threshold     = 100
+pop_size              = 10
+reset_on_extinction   = False
+no_fitness_termination= False
+
+[DefaultGenome]
+# network parameters
+num_inputs              = 3
+num_hidden              = 1
+num_outputs             = 2
+feed_forward            = True
+initial_connection      = partial_direct 0.5
+
+# node activation options
+activation_default      = sigmoid
+activation_mutate_rate  = 0.0
+activation_options      = sigmoid
+
+# node aggregation options
+aggregation_default     = sum
+aggregation_mutate_rate = 0.0
+aggregation_options     = sum
+
+# connection add/remove rates
+conn_add_prob           = 0.5
+conn_delete_prob        = 0.5
+
+# node add/remove rates
+node_add_prob           = 0.2
+node_delete_prob        = 0.2
+
+# connection enable options
+enabled_default         = True
+enabled_mutate_rate     = 0.01
+
+# node bias options
+bias_init_mean          = 0.0
+bias_init_stdev         = 1.0
+bias_max_value          = 30.0
+bias_min_value          = -30.0
+bias_mutate_power       = 0.5
+bias_mutate_rate        = 0.7
+bias_replace_rate       = 0.1
+
+# node response options
+response_init_mean      = 1.0
+response_init_stdev     = 0.0
+response_max_value      = 30.0
+response_min_value      = -30.0
+response_mutate_power   = 0.0
+response_mutate_rate    = 0.0
+response_replace_rate   = 0.0
+
+# connection weight options
+weight_init_mean        = 0.0
+weight_init_stdev       = 1.0
+weight_max_value        = 30
+weight_min_value        = -30
+weight_mutate_power     = 0.5
+weight_mutate_rate      = 0.8
+weight_replace_rate     = 0.1
+
+# genome compatibility options
+compatibility_disjoint_coefficient = 1.0
+compatibility_weight_coefficient   = 0.5
+
+[DefaultSpeciesSet]
+compatibility_threshold = 3.3
+
+[DefaultStagnation]
+species_fitness_func = max
+max_stagnation       = 100
+species_elitism      = 1
+
+[DefaultReproduction]
+elitism            = 2
+survival_threshold = 0.1
+min_species_size   = 2
+#+end_src
+
+** neat-pythonとcursesを組み合わせる
+
+neat-pythonとcursesを組み合わていきます。
+
+#+begin_src
+import random
+import curses
+import itertools
+import math
+import time
+
+from neat.config import Config
+from neat.genes import DefaultNodeGene
+from neat.genome import DefaultGenome
+from neat.nn import FeedForwardNetwork
+from neat.population import Population
+from neat.reproduction import DefaultReproduction
+from neat.species import DefaultSpeciesSet
+from neat.stagnation import DefaultStagnation
+
+c = Config(
+    DefaultGenome,
+    DefaultReproduction,
+    DefaultSpeciesSet,
+    DefaultStagnation,
+    "simple.conf",  # 設定ファイル
+)
+p = Population(c)
+
+stdscr = curses.initscr()                # 画面を初期化する
+
+def eval_genomes(genomes, config):
+    for genome_id, genome in genomes:
+        net = FeedForwardNetwork.create(genome, config)
+
+        # ================ ドメインに依存する処理を実装する ==========
+        ch = random.choice(["😃", "😍", "🍪"])   # どれかを表示する
+        stdscr.addch(0, 0, ch)                   # 1文字表示
+        stdscr.addstr(0, 2, " < Hello, world!")  # 文字列を表示する
+        stdscr.refresh()                         # 画面の変更を反映する
+        genome.fitness = 1  # その個体がどれぐらい、イケてたか？
+        time.sleep(0.1)     # 表示を見るため少しスリープする
+        # ================ ドメインに依存する処理ここまで ===========
+
+winner = p.run(eval_genomes, n=10)  # 10世代
+curses.endwin()  # ゲーム画面の終了
+print(winner)
+#+end_src
+
+neat.config.Configクラスで設定ファイルを読み込み、全体の処理を行う為のPopulationをインスタンス化します。個体を動かし評価するための =eval_genomes= 関数も用意します。
+
+=eval_genomes= を =Population= の =run= メソッドに渡して処理を開始します。
+
+** 遺伝的アルゴリズムでクッキーを探し回る
+
+先のコードで =ドメインに依存する処理を実装する= とコメントされている所を、クッキーを探し回るように書き換えていきます。
+
+#+begin_src
+from neat.config import Config
+from neat.genes import DefaultNodeGene
+from neat.genome import DefaultGenome
+from neat.population import Population
+from neat.reproduction import DefaultReproduction
+from neat.species import DefaultSpeciesSet
+from neat.stagnation import DefaultStagnation
+
+import curses
+import itertools
+import math
+import time
+
+from neat.nn import FeedForwardNetwork
+
+c = Config(
+    DefaultGenome,
+    DefaultReproduction,
+    DefaultSpeciesSet,
+    DefaultStagnation,
+    "simple.conf",
+)
+
+p = Population(c)
+
+def eval_genomes(genomes, config):
+    for genome_id, genome in genomes:
+        net = FeedForwardNetwork.create(genome, config)
+
+        # ================ ドメインに依存する処理を実装する ==========
+        genome.fitness = 0
+        BLANK = " "
+        GOAL = "🍪"
+        AGENT = "😃"  # エージェントの生成
+        GAME_CLEAR = "😍"
+        GAME_OVER = "👽"
+
+        goal = [10, 10]  # ゴール (この場所を探す)
+        current = [30, 80]  # エージェントの開始位置
+
+        stdscr = curses.initscr()  # 画面の初期化
+        stdscr.addch(goal[0], goal[1], GOAL)  # ゴール
+
+        for i in itertools.count():
+            # 表示を更新
+            stdscr.addstr(0, 0, f"GENOME: {genome.key} | life: {i} | current: {current} | fitness: {genome.fitness}                        ")
+            if goal == current:  # ゴールに到達
+                genome.fitness += 1000  # 報酬を追加
+
+                stdscr.addstr(0, 0, f"GENOME: {genome.key} | life: {i} | current: {current} | fitness: {genome.fitness}                        ")
+                stdscr.addch(current[0], current[1], GAME_CLEAR)
+                stdscr.refresh()
+                time.sleep(5)
+                break
+
+            if i > 100:  # 寿命に到達
+                # ゴールと自分自身の距離を測る
+                distance = math.sqrt(
+                    (goal[0] - current[0]) ** 2 + (goal[1] - current[1]) ** 2
+                )
+                genome.fitness -= distance  # 報酬を追加
+
+                # ゲームオーバー
+                try:
+                    stdscr.addstr(0, 0, f"GENOME: {genome.key} | life: {i} | current: {current} | fitness: {genome.fitness}                        ")
+                    stdscr.addch(current[0], current[1], GAME_OVER)
+                    stdscr.refresh()
+                    time.sleep(0.3)
+                    stdscr.addch(current[0], current[1], BLANK)
+                except curses.error:  # 画面はみ出し（文字だけ表示）
+                    stdscr.addstr(1, 1, f"DEAD")
+                    stdscr.refresh()
+                    time.sleep(0.3)
+                    stdscr.addstr(1, 1, f"    ")
+                    stdscr.refresh()
+                break
+
+            try:
+                # エージェント描画
+                stdscr.addch(current[0], current[1], AGENT)
+                stdscr.refresh()
+                time.sleep(0.01)
+                stdscr.addch(current[0], current[1], BLANK)
+            except curses.error:
+                pass  # 画面はみ出し（無視する）
+
+            # 移動
+            input_data = [
+                i,
+                current[0],  # 現在位置
+                current[1],  # 現在位置
+            ]
+            o_xy = net.activate(input_data)
+            axis = 0 if o_xy[0] > o_xy[1] else 1
+            amount = 1 if o_xy[axis] < 0.5 else -1
+
+            stdscr.refresh()
+            if (current[axis] + amount) > 1:
+                current[axis] += amount
+        # ================ ドメインに依存する処理ここまで ===========
+
+winner = p.run(eval_genomes, n=10)  # 10世代
+curses.endwin()  # ゲーム画面の終了
+print(winner)
+#+end_src
+
+** 設定を変更してみる
+
+ここでは設定を変更し、挙動の違いを観察してみます。
+
+- NEAT pop_size          :: 母集団の数
+- NEAT fitness_threshold :: fitnessの閾値
+
+* neat-pythonの実装を覗きながらNEATを学ぶ
+
+neat-pythonはNEATアルゴリズムを実装したPythonライブラリの一つです。このライブラリを使わなければNEATアルゴリズムが使えないわけではないですが、NEATアルゴリズムを学ぶ上で、NEATアルゴリズムの説明と、neat-pythonの実装を行ったり来たりする事で、NEATアルゴリズムについての理解が深まります。
+
+実は今回のハンズオンの主な狙いは「こうやることで理解しやすくなるかも」という情報を共有する事にあります。アルゴリズムについては詳しくないけれど、Pythonは少し読める私のようなプログラマーにとっては、そっちの方が性に合っているかもしれません。
+
+** NEATのもう少し詳しい説明
+
+NEATアルゴリズムは、次のように遺伝的アルゴリズムを使ってニューラルネットワークの構造と重みに変化を与えます。
+
+                              --+
+1. 初期集団を生成する。         |
+1. 種分化する。                 |
+1. 集団の個体を評価する。       | 繰り返す
+1. 新たな集団を生成する。       |
+   - 選択、交叉、突然変異       |
+                              --+
+#+caption: 『Pythonではじめるオープンエンドな進化的アルゴリズム』より
+[[./neat.png]]
+
+** 集団と個体と遺伝子
+
+NEATには幾つかの用語があります。
+
+- 集団   :: 個体の集まり。
+- 個体   :: 遺伝子の集まり。ニューラルネットワークに変換できる。
+- 遺伝子 :: ニューラルネットワークに変換された時に、重みや繋がりになる元の情報。
+
+***  集団
+
+集団はPopulationというクラスで実装されています。 =run= メソッドの中で処理の大きな流れが実装されています。
+
+[[/opt/ng/neat-python/neat/population.py][neat/population.py]]
+
+=Population= クラスを継承し =run= メソッドをオーバーライドすれば、当然この部分の処理の流れを変更できます。
+
+*** 個体
+
+個体はDefaultGenomeというクラスで実装されています。
+
+[[/opt/ng/neat-python/neat/genome.py][neat/genome.py]]
+
+*** 遺伝子
+
+遺伝子には2種類あり、ニューラルネットワークのノードの重みを扱うノード遺伝子と、ノードの繋がりを扱うコネクション遺伝子があります。
+
+BaseGeneを継承する形で、それぞれ、DefaultNodeGene、DefaultConnectionGeneとして実装されています。
+
+[[/opt/ng/neat-python/neat/genes.py][neat/genes.py]]
+
+** 遺伝子型から表現型への変換
+
+遺伝子型は重みや繋りのための情報を保持していますが、これ自体は計算できません。そのため計算をするために表現型に変換する必要があります。neat-pythonでは2つの表現型への変換処理を提供しています。
+
+- 順伝播型ニューラルネットワーク
+
+  [[/opt/ng/neat-python/neat/nn/feed_forward.py][neat/nn/feed_forward.py]]
+
+- 回帰型ニューラルネットワーク
+
+  [[/opt/ng/neat-python/neat/nn/recurrent.py][neat/nn/recurrent.py]]
+
+* 発展
+
+他の更に進んだアルゴリズムとして、新規性探索アルゴリズム、品質多様性アルゴリズム、最小基準共進化アルゴリズム、POETなどがあります。
+
+『Pythonではじめるオープンエンドな進化的アルゴリズム』では主にそこを主眼として、主の著者のお二人(岡先生と斎藤さん)が説明してくださっています。
+
+こちらの書籍は現在オライリージャパンさんから発売中です。
+
+* まとめ
+
+- NEATとは遺伝的アルゴリズムを使って、ニューラルネットワークの構造と重みを変化させる事で、より良いニューラルネットワークを探し出す方法。
+
+- NEATアルゴリズムを実装したneat-pythonを使って、小さなゲームを実装した。
+
+- neat-pythonの実装とNEATアルゴリズムの考え方を行き来しながら、NEATの理解を深めようとした。
+
+* 告知
+
+[[./CM.org]]
