@@ -219,7 +219,7 @@ for i in itertools.count(start=1):
 
     if current == goal:
         stdscr.addch(current[0], current[1], "😍")
-        stdscr.refresh()
+        stdscr.refresh(
         break
 
     stdscr.addch(current[0], current[1], "😃")
@@ -586,19 +586,14 @@ BaseGeneを継承する形で、それぞれ、DefaultNodeGene、DefaultConnecti
 
 遺伝子型は重みや繋りのための情報を保持していますが、これ自体は計算できません。そのため計算をするために表現型に変換する必要があります。neat-pythonでは2つの表現型への変換処理を提供しています。
 
-- 順伝播型ニューラルネットワーク
-
-  [[/opt/ng/neat-python/neat/nn/feed_forward.py][neat/nn/feed_forward.py]]
-
-- 回帰型ニューラルネットワーク
-
-  [[/opt/ng/neat-python/neat/nn/recurrent.py][neat/nn/recurrent.py]]
+- [[/opt/ng/neat-python/neat/nn/feed_forward.py][neat/nn/feed_forward.py]]
+- [[/opt/ng/neat-python/neat/nn/recurrent.py][neat/nn/recurrent.py]]
 
 * 発展
 
 他の更に進んだアルゴリズムとして、新規性探索アルゴリズム、品質多様性アルゴリズム、最小基準共進化アルゴリズム、POETなどがあります。
 
-『Pythonではじめるオープンエンドな進化的アルゴリズム』では主にそこを主眼として、主の著者のお二人(岡先生と斎藤さん)が説明してくださっています。
+『Pythonではじめるオープンエンドな進化的アルゴリズム』では主にそこを主眼として、主の著者のお二人が説明してくださっています。
 
 こちらの書籍は現在オライリージャパンさんから発売中です。
 
