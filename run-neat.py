@@ -38,10 +38,20 @@ def eval_genomes(genomes, config):
         goal = [10, 10]  # ゴール (この場所を探す)
         current = [30, 80]  # エージェントの開始位置
 
+        init_distance = math.sqrt(  # 最初のゴールまでの距離
+            (goal[0] - current[0]) ** 2 + (goal[1] - current[1]) ** 2
+        )
+
         stdscr = curses.initscr()  # 画面の初期化
         stdscr.addch(goal[0], goal[1], GOAL)  # ゴール
 
         for i in itertools.count():
+            # ゴールと自分自身の距離を測る
+            distance = math.sqrt(
+                (goal[0] - current[0]) ** 2 + (goal[1] - current[1]) ** 2
+            )
+            genome.fitness = (init_distance - distance) / init_distance  # 報酬を計算
+
             # 表示を更新
             stdscr.addstr(0, 0, f"GENOME: {genome.key} | life: {i} | current: {current} | fitness: {genome.fitness}                        ")
             if goal == current:  # ゴールに到達
@@ -86,13 +96,12 @@ def eval_genomes(genomes, config):
 
             # 移動
             input_data = [
-                i,
-                current[0]/1000,  # 現在位置
-                current[1]/1000,  # 現在位置
+                current[0]/100,  # 現在位置
+                current[1]/100,  # 現在位置
             ]
-            o_xy = net.activate(input_data)
-            axis = 0 if o_xy[0] > o_xy[1] else 1
-            amount = 1 if o_xy[axis] < 0.5 else -1
+            o_xy = net.activate(input_data)  # ニューラルネット入力して出力を得る
+            axis = 0 if o_xy[0] > o_xy[1] else 1  # x,y座標決定
+            amount = 1 if o_xy[axis] < 0.5 else -1  # +,-決定
 
             stdscr.refresh()
             if (current[axis] + amount) > 1:
