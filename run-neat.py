@@ -63,11 +63,6 @@ def eval_genomes(genomes, config):
                 break
 
             if i > 100:  # 寿命に到達
-                # ゴールと自分自身の距離を測る
-                distance = math.sqrt(
-                    (goal[0] - current[0]) ** 2 + (goal[1] - current[1]) ** 2
-                )
-                genome.fitness -= distance  # 報酬を追加
 
                 # ゲームオーバー
                 try:
@@ -95,8 +90,8 @@ def eval_genomes(genomes, config):
 
             # 移動
             input_data = [
-                current[0]/100,  # 現在位置
-                current[1]/100,  # 現在位置
+                (goal[0] - current[0]) / 5,  # 現在位置
+                (goal[1] - current[1]) / 5,  # 現在位置
             ]
             o_xy = net.activate(input_data)  # ニューラルネット入力して出力を得る
             axis = 0 if o_xy[0] > o_xy[1] else 1  # x,y座標決定
