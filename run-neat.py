@@ -87,8 +87,8 @@ def eval_genomes(genomes, config):
             # 移動
             input_data = [
                 i,
-                current[0],  # 現在位置
-                current[1],  # 現在位置
+                current[0]/1000,  # 現在位置
+                current[1]/1000,  # 現在位置
             ]
             o_xy = net.activate(input_data)
             axis = 0 if o_xy[0] > o_xy[1] else 1
