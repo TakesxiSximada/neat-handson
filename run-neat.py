@@ -55,7 +55,6 @@ def eval_genomes(genomes, config):
             # 表示を更新
             stdscr.addstr(0, 0, f"GENOME: {genome.key} | life: {i} | current: {current} | fitness: {genome.fitness}                        ")
             if goal == current:  # ゴールに到達
-                genome.fitness += 1000  # 報酬を追加
 
                 stdscr.addstr(0, 0, f"GENOME: {genome.key} | life: {i} | current: {current} | fitness: {genome.fitness}                        ")
                 stdscr.addch(current[0], current[1], GAME_CLEAR)
