@@ -25,6 +25,11 @@ from neat.nn import FeedForwardNetwork
 
 def eval_genomes(genomes, config):
     for genome_id, genome in genomes:
+
+        # 親として次世代に残ったgenomeは再評価しない
+        if genome.fitness is not None:
+            continue
+
         net = FeedForwardNetwork.create(genome, config)
 
         # ================ ドメインに依存する処理を実装する ==========
@@ -53,7 +58,7 @@ def eval_genomes(genomes, config):
             genome.fitness = (init_distance - distance) / init_distance  # 報酬を計算
 
             # 表示を更新
-            stdscr.addstr(0, 0, f"GENOME: {genome.key} | life: {i} | current: {current} | fitness: {genome.fitness}                        ")
+            stdscr.addstr(0, 0, f"GENOME: {genome.key: =3} | life: {i: =3} | current: [{current[0]: =3}, {current[1]: =3}] | fitness: {genome.fitness: =+.5f}")
             if goal == current:  # ゴールに到達
 
                 stdscr.addstr(0, 0, f"GENOME: {genome.key} | life: {i} | current: {current} | fitness: {genome.fitness}                        ")
@@ -66,7 +71,7 @@ def eval_genomes(genomes, config):
 
                 # ゲームオーバー
                 try:
-                    stdscr.addstr(0, 0, f"GENOME: {genome.key} | life: {i} | current: {current} | fitness: {genome.fitness}                        ")
+                    stdscr.addstr(0, 0, f"GENOME: {genome.key: =3} | life: {i: =3} | current: [{current[0]: =3}, {current[1]: =3}] | fitness: {genome.fitness: =+.5f}")
                     stdscr.addch(current[0], current[1], GAME_OVER)
                     stdscr.refresh()
                     time.sleep(0.3)
