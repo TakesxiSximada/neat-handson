@@ -25,6 +25,11 @@ from neat.nn import FeedForwardNetwork
 
 def eval_genomes(genomes, config):
     for genome_id, genome in genomes:
+
+        # 親として次世代に残ったgenomeは再評価しない
+        if genome.fitness is not None:
+            continue
+
         net = FeedForwardNetwork.create(genome, config)
 
         # ================ ドメインに依存する処理を実装する ==========
@@ -38,14 +43,23 @@ def eval_genomes(genomes, config):
         goal = [10, 10]  # ゴール (この場所を探す)
         current = [30, 80]  # エージェントの開始位置
 
+        init_distance = math.sqrt(  # 最初のゴールまでの距離
+            (goal[0] - current[0]) ** 2 + (goal[1] - current[1]) ** 2
+        )
+
         stdscr = curses.initscr()  # 画面の初期化
         stdscr.addch(goal[0], goal[1], GOAL)  # ゴール
 
         for i in itertools.count():
+            # ゴールと自分自身の距離を測る
+            distance = math.sqrt(
+                (goal[0] - current[0]) ** 2 + (goal[1] - current[1]) ** 2
+            )
+            genome.fitness = (init_distance - distance) / init_distance  # 報酬を計算
+
             # 表示を更新
-            stdscr.addstr(0, 0, f"GENOME: {genome.key} | life: {i} | current: {current} | fitness: {genome.fitness}                        ")
+            stdscr.addstr(0, 0, f"GENOME: {genome.key: =3} | life: {i: =3} | current: [{current[0]: =3}, {current[1]: =3}] | fitness: {genome.fitness: =+.5f}")
             if goal == current:  # ゴールに到達
-                genome.fitness += 1000  # 報酬を追加
 
                 stdscr.addstr(0, 0, f"GENOME: {genome.key} | life: {i} | current: {current} | fitness: {genome.fitness}                        ")
                 stdscr.addch(current[0], current[1], GAME_CLEAR)
@@ -54,15 +68,10 @@ def eval_genomes(genomes, config):
                 break
 
             if i > 100:  # 寿命に到達
-                # ゴールと自分自身の距離を測る
-                distance = math.sqrt(
-                    (goal[0] - current[0]) ** 2 + (goal[1] - current[1]) ** 2
-                )
-                genome.fitness -= distance  # 報酬を追加
 
                 # ゲームオーバー
                 try:
-                    stdscr.addstr(0, 0, f"GENOME: {genome.key} | life: {i} | current: {current} | fitness: {genome.fitness}                        ")
+                    stdscr.addstr(0, 0, f"GENOME: {genome.key: =3} | life: {i: =3} | current: [{current[0]: =3}, {current[1]: =3}] | fitness: {genome.fitness: =+.5f}")
                     stdscr.addch(current[0], current[1], GAME_OVER)
                     stdscr.refresh()
                     time.sleep(0.3)
@@ -86,13 +95,12 @@ def eval_genomes(genomes, config):
 
             # 移動
             input_data = [
-                i,
-                current[0],  # 現在位置
-                current[1],  # 現在位置
+                (goal[0] - current[0]) / 5,  # 現在位置
+                (goal[1] - current[1]) / 5,  # 現在位置
             ]
-            o_xy = net.activate(input_data)
-            axis = 0 if o_xy[0] > o_xy[1] else 1
-            amount = 1 if o_xy[axis] < 0.5 else -1
+            o_xy = net.activate(input_data)  # ニューラルネット入力して出力を得る
+            axis = 0 if o_xy[0] > o_xy[1] else 1  # x,y座標決定
+            amount = 1 if o_xy[axis] < 0.5 else -1  # +,-決定
 
             stdscr.refresh()
             if (current[axis] + amount) > 1:
